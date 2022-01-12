@@ -21,15 +21,14 @@ func SensorReadingFromEnv(env physic.Env, date time.Time) SensorReading {
 	sr := SensorReading{
 		Temperature: env.Temperature.Celsius(),
 		Pressure:    float64(env.Pressure) / float64(HectoPascal),
+		Updated:     date,
+		UpdatedStr:  date.Format("2006-01-02 15:04:05"), // ISO 8601 without timezone
 	}
 
-	if env.Humidity > 0 {
+	if args.HasHumidity {
 		newHumidity := float64(env.Humidity / physic.PercentRH)
 		sr.Humidity = &newHumidity
 	}
-
-	sr.Updated = date
-	sr.UpdatedStr = date.Format("2006-01-02 15:04:05") // ISO 8601 without timezone
 
 	return sr
 }

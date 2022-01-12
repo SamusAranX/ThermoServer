@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"periph.io/x/conn/v3/i2c"
 	"periph.io/x/conn/v3/i2c/i2creg"
 	"periph.io/x/conn/v3/physic"
 	"periph.io/x/devices/v3/bmxx80"
@@ -30,15 +31,17 @@ type ProgramArgs struct {
 }
 
 var (
+	args ProgramArgs
+
 	currentEnv     physic.Env
 	currentReading SensorReading
 )
 
 func updateReading(ch <-chan physic.Env) {
 	for env := range ch {
-		currentEnv = env
-		log.Println("New reading received!")
+		log.Println("New reading")
 
+		currentEnv = env
 		currentReading = SensorReadingFromEnv(currentEnv, time.Now())
 	}
 }
@@ -55,7 +58,8 @@ func getOutboundIP() net.IP {
 	return localAddr.IP
 }
 
-func deviceSetup(i2cdev string) *bmxx80.Dev {
+// deviceSetup returns the bus and the device. the caller has the responsibility to close the bus
+func deviceSetup(i2cdev string) (i2c.BusCloser, *bmxx80.Dev) {
 	if _, err := host.Init(); err != nil {
 		log.Fatalf("Initialization failed: %v", err)
 	}
@@ -64,18 +68,17 @@ func deviceSetup(i2cdev string) *bmxx80.Dev {
 	if err != nil {
 		log.Fatalf("Couldn't open I2C device: %v", err)
 	}
-	defer bus.Close()
 
 	dev, err := bmxx80.NewI2C(bus, 0x76, &bmxx80.DefaultOpts)
 	if err != nil {
 		log.Fatalf("Couldn't initialize sensor: %v", err)
 	}
 
-	return dev
+	return bus, dev
 }
 
 func main() {
-	args := ProgramArgs{}
+	args = ProgramArgs{}
 	argParser := flags.NewParser(&args, flags.Default)
 
 	_, err := argParser.Parse()
@@ -84,7 +87,8 @@ func main() {
 	}
 
 	// Boring i2c setup (error handling happens in this function)
-	dev := deviceSetup(args.I2CDevice)
+	bus, dev := deviceSetup(args.I2CDevice)
+	defer bus.Close()
 
 	// SenseContinuous will take one reading immediately before looping
 	readingChannel, err := dev.SenseContinuous(5 * time.Second)
