@@ -37,6 +37,10 @@ var (
 	currentReading SensorReading
 )
 
+const (
+	MIN_TIMEOUT_SECONDS = 2
+)
+
 func updateReading(ch <-chan physic.Env) {
 	for env := range ch {
 		log.Println("New reading")
@@ -69,7 +73,14 @@ func deviceSetup(i2cdev string) (i2c.BusCloser, *bmxx80.Dev) {
 		log.Fatalf("Couldn't open I2C device: %v", err)
 	}
 
-	dev, err := bmxx80.NewI2C(bus, 0x76, &bmxx80.DefaultOpts)
+	deviceOpts := bmxx80.Opts{
+		Temperature: bmxx80.O4x,
+		Pressure:    bmxx80.O4x,
+		Humidity:    bmxx80.O4x,
+		Filter:      bmxx80.F4,
+	}
+
+	dev, err := bmxx80.NewI2C(bus, 0x76, &deviceOpts)
 	if err != nil {
 		log.Fatalf("Couldn't initialize sensor: %v", err)
 	}
@@ -91,7 +102,8 @@ func main() {
 	defer bus.Close()
 
 	// SenseContinuous will take one reading immediately before looping
-	readingChannel, err := dev.SenseContinuous(5 * time.Second)
+	intervalDuration := time.Duration(args.Interval)
+	readingChannel, err := dev.SenseContinuous(intervalDuration * time.Second)
 	if err != nil {
 		log.Fatalf("Couldn't start taking readings: %v", err)
 	}
@@ -114,11 +126,13 @@ func main() {
 		}
 	})
 
+	timeoutLen := max(MIN_TIMEOUT_SECONDS, int(args.Interval))
+
 	addr := fmt.Sprintf("%s:%d", args.Host, args.Port)
 	srv := &http.Server{
 		Addr:         addr,
-		ReadTimeout:  4 * time.Second,
-		WriteTimeout: 4 * time.Second,
+		ReadTimeout:  time.Duration(timeoutLen) * time.Second,
+		WriteTimeout: time.Duration(timeoutLen) * time.Second,
 		IdleTimeout:  120 * time.Second,
 		Handler:      r,
 	}

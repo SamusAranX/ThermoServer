@@ -6,7 +6,7 @@ import (
 )
 
 const (
-	HectoPascal physic.Pressure = 100 * physic.Pascal
+	HectoPascal = 100 * physic.Pascal
 )
 
 type SensorReading struct {
