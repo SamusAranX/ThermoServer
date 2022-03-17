@@ -1,9 +1,11 @@
 package main
 
 import (
+	"ThermoServer/bme680"
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/aldernero/scd4x"
 	"github.com/gorilla/mux"
 	"github.com/jessevdk/go-flags"
 	"log"
@@ -14,7 +16,6 @@ import (
 	"periph.io/x/conn/v3/i2c"
 	"periph.io/x/conn/v3/i2c/i2creg"
 	"periph.io/x/conn/v3/physic"
-	"periph.io/x/devices/v3/bmxx80"
 	"periph.io/x/host/v3"
 	"time"
 )
@@ -25,9 +26,8 @@ type ProgramArgs struct {
 	Port uint16 `short:"P" long:"port" default:"27315" description:"Port to listen on"`
 
 	// Sensor Options
-	Interval    uint16 `short:"I" long:"interval" default:"5" description:"Interval between readings"`
-	I2CDevice   string `short:"D" long:"i2cdev" description:"The used I2C device (default: auto)"`
-	HasHumidity bool   `long:"humidity" description:"Enable this if the sensor has a humidity sensor"`
+	Interval  uint16 `short:"I" long:"interval" default:"5" description:"Interval between readings"`
+	I2CDevice string `short:"D" long:"i2cdev" description:"The used I2C device (default: auto)"`
 }
 
 var (
@@ -35,6 +35,8 @@ var (
 
 	currentEnv     physic.Env
 	currentReading SensorReading
+
+	scdDev *scd4x.SCD4x
 )
 
 const (
@@ -43,10 +45,24 @@ const (
 
 func updateReading(ch <-chan physic.Env) {
 	for env := range ch {
-		log.Println("New reading")
+		log.Println("New readings")
 
 		currentEnv = env
-		currentReading = SensorReadingFromEnv(currentEnv, time.Now())
+		scdData, err := scdDev.ReadMeasurement()
+		if err != nil {
+			fmt.Errorf("error while reading SCD4x data: %v\n", err)
+		}
+
+		// BME680
+		reading := NewSensorReading(time.Now())
+		reading.Temperature = env.Temperature.Celsius()
+		reading.Pressure = float64(env.Pressure) / float64(HectoPascal)
+
+		// SCD41
+		reading.Humidity = scdData.Rh
+		reading.CO2 = scdData.CO2
+
+		currentReading = reading
 	}
 }
 
@@ -62,8 +78,7 @@ func getOutboundIP() net.IP {
 	return localAddr.IP
 }
 
-// deviceSetup returns the bus and the device. the caller has the responsibility to close the bus
-func deviceSetup(i2cdev string) (i2c.BusCloser, *bmxx80.Dev) {
+func setupI2CBus(i2cdev string) i2c.BusCloser {
 	if _, err := host.Init(); err != nil {
 		log.Fatalf("Initialization failed: %v", err)
 	}
@@ -73,19 +88,42 @@ func deviceSetup(i2cdev string) (i2c.BusCloser, *bmxx80.Dev) {
 		log.Fatalf("Couldn't open I2C device: %v", err)
 	}
 
-	deviceOpts := bmxx80.Opts{
-		Temperature: bmxx80.O4x,
-		Pressure:    bmxx80.O4x,
-		Humidity:    bmxx80.O4x,
-		Filter:      bmxx80.F4,
+	return bus
+}
+
+// setupBMESensor returns the bus and the device. the caller has the responsibility to close the bus
+func setupBMESensor(i2cBus i2c.BusCloser) *bme680.Dev {
+	deviceOpts := bme680.Opts{
+		Temperature: bme680.O4x,
+		Pressure:    bme680.O4x,
+		Humidity:    bme680.O4x,
+		Filter:      bme680.F4,
 	}
 
-	dev, err := bmxx80.NewI2C(bus, 0x76, &deviceOpts)
+	dev, err := bme680.NewI2C(i2cBus, 0x76, &deviceOpts)
 	if err != nil {
 		log.Fatalf("Couldn't initialize sensor: %v", err)
 	}
 
-	return bus, dev
+	return dev
+}
+
+func setupSCDSensor(i2cBus i2c.BusCloser) *scd4x.SCD4x {
+	sensor, err := scd4x.SensorInit(i2cBus, false)
+	if err != nil {
+		log.Fatalln(err.Error())
+	}
+
+	fmt.Println("Initializing SCD4x…")
+	if err := sensor.StopMeasurements(); err != nil {
+		log.Fatalf("Error while trying to stop periodic measurements: %v\n", err)
+	}
+	if err := sensor.StartMeasurements(); err != nil {
+		log.Fatalf("Error while trying to start periodic measurements: %v\n", err)
+	}
+	fmt.Println("Done")
+
+	return sensor
 }
 
 func main() {
@@ -97,17 +135,27 @@ func main() {
 		log.Fatal("arg parse fail")
 	}
 
-	// Boring i2c setup (error handling happens in this function)
-	bus, dev := deviceSetup(args.I2CDevice)
+	// Boring i2c setup (error handling happens in these functions)
+	bus := setupI2CBus(args.I2CDevice)
 	defer bus.Close()
+
+	bmeDev := setupBMESensor(bus)
 
 	// SenseContinuous will take one reading immediately before looping
 	intervalDuration := time.Duration(args.Interval)
-	readingChannel, err := dev.SenseContinuous(intervalDuration * time.Second)
+	readingChannel, err := bmeDev.SenseContinuous(intervalDuration * time.Second)
 	if err != nil {
 		log.Fatalf("Couldn't start taking readings: %v", err)
 	}
-	defer dev.Halt()
+	defer bmeDev.Halt()
+
+	scdDev = setupSCDSensor(bus)
+	defer scdDev.StopMeasurements()
+
+	fmt.Println("Waking up in a second…")
+
+	// give the sensors time to wake up
+	time.Sleep(1 * time.Second)
 
 	// Start background measurements
 	go updateReading(readingChannel)

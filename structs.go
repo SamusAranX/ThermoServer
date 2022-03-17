@@ -12,23 +12,15 @@ const (
 type SensorReading struct {
 	Temperature float64   `json:"temperature"`
 	Pressure    float64   `json:"pressure"`
-	Humidity    *float64  `json:"humidity,omitempty"`
+	Humidity    float64   `json:"humidity"`
+	CO2         uint16    `json:"co2"`
 	Updated     time.Time `json:"-"`
 	UpdatedStr  string    `json:"updated"`
 }
 
-func SensorReadingFromEnv(env physic.Env, date time.Time) SensorReading {
-	sr := SensorReading{
-		Temperature: env.Temperature.Celsius(),
-		Pressure:    float64(env.Pressure) / float64(HectoPascal),
-		Updated:     date,
-		UpdatedStr:  date.Format("2006-01-02 15:04:05"), // ISO 8601 without timezone
+func NewSensorReading(date time.Time) SensorReading {
+	return SensorReading{
+		Updated:    date,
+		UpdatedStr: date.Format("2006-01-02 15:04:05"), // ISO 8601 without timezone
 	}
-
-	if args.HasHumidity {
-		newHumidity := float64(env.Humidity / physic.PercentRH)
-		sr.Humidity = &newHumidity
-	}
-
-	return sr
 }
