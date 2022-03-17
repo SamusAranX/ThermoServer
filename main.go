@@ -55,8 +55,8 @@ func updateReading(ch <-chan physic.Env) {
 
 		// BME680
 		reading := NewSensorReading(time.Now())
-		reading.Temperature = env.Temperature.Celsius()
-		reading.Pressure = float64(env.Pressure) / float64(HectoPascal)
+		reading.Temperature = currentEnv.Temperature.Celsius()
+		reading.Pressure = float64(currentEnv.Pressure) / float64(HectoPascal)
 
 		// SCD41
 		reading.Humidity = scdData.Rh

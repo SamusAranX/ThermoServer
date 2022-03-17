@@ -335,8 +335,6 @@ func (d *Dev) Halt() error {
 	})
 }
 
-//
-
 func (d *Dev) makeDev(opts *Opts) error {
 	d.opts = *opts
 
@@ -376,13 +374,13 @@ func (d *Dev) makeDev(opts *Opts) error {
 		// ctrl_meas; put it to sleep otherwise the config update may be
 		// ignored. This is really just in case the device was somehow put
 		// into normal but was not Halt'ed.
-		0xF4, byte(d.opts.Temperature)<<5 | byte(d.opts.Pressure)<<2 | byte(sleep),
+		AddrCtrlMeas, byte(d.opts.Temperature)<<5 | byte(d.opts.Pressure)<<2 | byte(sleep),
 		// ctrl_hum
-		0xF2, byte(d.opts.Humidity),
+		AddrCtrlHum, byte(d.opts.Humidity),
 		// config
-		0xF5, byte(NoFilter) << 2,
+		AddrConfig, byte(NoFilter) << 2,
 		// ctrl_meas must be re-written last.
-		0xF4, byte(d.opts.Temperature)<<5 | byte(d.opts.Pressure)<<2 | byte(sleep),
+		AddrCtrlMeas, byte(d.opts.Temperature)<<5 | byte(d.opts.Pressure)<<2 | byte(sleep),
 	}
 
 	return d.writeCommands(b)
