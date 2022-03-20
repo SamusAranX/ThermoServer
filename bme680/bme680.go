@@ -282,11 +282,8 @@ func (d *Dev) makeDev(opts Opts) error {
 
 	d.calibration = newCalibration(cal1[:], cal2[:])
 	b := []byte{
-		// ctrl_hum
-		AddrCtrlHum, byte(d.opts.Humidity),
-		// config
 		AddrConfig, byte(NoFilter) << 2,
-		// ctrl_meas must be re-written last.
+		AddrCtrlHum, byte(d.opts.Humidity),
 		AddrCtrlMeas, byte(d.opts.Temperature)<<5 | byte(d.opts.Pressure)<<2 | byte(sleep),
 	}
 
@@ -320,8 +317,8 @@ func (d *Dev) isNewDataAvailable() (bool, error) {
 func (d *Dev) measure(e *physic.Env) error {
 	err := d.writeCommands([]byte{
 		AddrConfig, byte(d.opts.Filter) << 2,
-		AddrCtrlMeas, byte(d.opts.Temperature)<<5 | byte(d.opts.Pressure)<<2 | byte(forced),
 		AddrCtrlHum, byte(d.opts.Humidity),
+		AddrCtrlMeas, byte(d.opts.Temperature)<<5 | byte(d.opts.Pressure)<<2 | byte(forced),
 	})
 	if err != nil {
 		return d.formatError(err)
@@ -376,11 +373,6 @@ func (d *Dev) readDataRegisters(e *physic.Env) error {
 		humidityCompRH := humidityComp * float64(physic.PercentRH)
 		e.Humidity = physic.RelativeHumidity(humidityCompRH)
 	}
-
-	tC := e.Temperature.Celsius()
-	hPa := float64(e.Pressure) / float64(physic.Pascal)
-	rH := float64(e.Humidity) / float64(physic.PercentRH)
-	fmt.Printf("env: t %.2f - p %.2f - h %.2f\n", tC, hPa, rH)
 
 	return nil
 }

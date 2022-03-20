@@ -41,26 +41,31 @@ var (
 
 const (
 	MinTimeoutSeconds = 2
+	HectoPascal       = 100 * physic.Pascal
 )
 
 func updateReading(ch <-chan physic.Env) {
 	for env := range ch {
 		log.Println("New readings")
 
+		reading := NewSensorReading(time.Now())
+
 		currentEnv = env
 		scdData, err := scdDev.ReadMeasurement()
 		if err != nil {
-			fmt.Printf("error while reading SCD4x data: %v\n", err)
+			fmt.Printf("SCD4x error, reusing previous data. Details: %v\n", err)
+			reading.Humidity = currentReading.Humidity
+			reading.CO2 = currentReading.CO2
+		} else {
+			// SCD41
+			reading.Humidity = scdData.Rh
+			reading.CO2 = scdData.CO2
 		}
 
 		// BME680
-		reading := NewSensorReading(time.Now())
 		reading.Temperature = currentEnv.Temperature.Celsius()
-		reading.Pressure = float64(currentEnv.Pressure) / float64(HectoPascal)
-
-		// SCD41
-		reading.Humidity = scdData.Rh
-		reading.CO2 = scdData.CO2
+		reading.Pressure = float64(currentEnv.Pressure) / float64(physic.Pascal)
+		//reading.HumidityBME = float64(currentEnv.Humidity) / float64(physic.PercentRH)
 
 		currentReading = reading
 	}
