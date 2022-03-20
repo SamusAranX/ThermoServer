@@ -26,7 +26,7 @@ type ProgramArgs struct {
 	Port uint16 `short:"P" long:"port" default:"27315" description:"Port to listen on"`
 
 	// Sensor Options
-	Interval  uint16 `short:"I" long:"interval" default:"5" description:"Interval between readings"`
+	Interval  uint16 `short:"I" long:"interval" default:"10" description:"Interval between readings"`
 	I2CDevice string `short:"D" long:"i2cdev" description:"The used I2C device (default: auto)"`
 }
 
@@ -40,7 +40,7 @@ var (
 )
 
 const (
-	MIN_TIMEOUT_SECONDS = 2
+	MinTimeoutSeconds = 2
 )
 
 func updateReading(ch <-chan physic.Env) {
@@ -50,7 +50,7 @@ func updateReading(ch <-chan physic.Env) {
 		currentEnv = env
 		scdData, err := scdDev.ReadMeasurement()
 		if err != nil {
-			fmt.Errorf("error while reading SCD4x data: %v\n", err)
+			fmt.Printf("error while reading SCD4x data: %v\n", err)
 		}
 
 		// BME680
@@ -97,10 +97,10 @@ func setupBMESensor(i2cBus i2c.BusCloser) *bme680.Dev {
 		Temperature: bme680.O4x,
 		Pressure:    bme680.O4x,
 		Humidity:    bme680.O4x,
-		Filter:      bme680.F4,
+		Filter:      bme680.NoFilter,
 	}
 
-	dev, err := bme680.NewI2C(i2cBus, 0x76, &deviceOpts)
+	dev, err := bme680.NewI2C(i2cBus, 0x76, deviceOpts)
 	if err != nil {
 		log.Fatalf("Couldn't initialize sensor: %v", err)
 	}
@@ -174,7 +174,7 @@ func main() {
 		}
 	})
 
-	timeoutLen := max(MIN_TIMEOUT_SECONDS, int(args.Interval))
+	timeoutLen := max(MinTimeoutSeconds, int(args.Interval))
 
 	addr := fmt.Sprintf("%s:%d", args.Host, args.Port)
 	srv := &http.Server{
